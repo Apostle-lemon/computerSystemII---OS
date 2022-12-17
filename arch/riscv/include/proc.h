@@ -33,6 +33,7 @@ struct task_struct {
     uint64 priority; // 运行优先级
     uint64 pid;      // 线程id
 
+    // + 40 bytes
     struct thread_struct thread;
 };
 

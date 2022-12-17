@@ -10,7 +10,7 @@ void test() {
         __asm__ volatile("rdtime %[t]" : [t] "=r" (present_time) : : "memory");
         present_time /= 10000000;
         if (record_time < present_time) {
-            printk("kernel is running! Time: %lus\n", present_time);
+            // printk("[DEBUG] kernel is running! Time: %lus\n", present_time);
             record_time = present_time; 
         }
     }

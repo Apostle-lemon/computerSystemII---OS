@@ -10,6 +10,7 @@ extern void do_timer(void);
 extern void schedule(void);
 extern void __dummy();
 extern void __switch_to(struct task_struct* prev, struct task_struct* next);
+extern void set_priority();
 
 struct task_struct* idle;           // idle process
 struct task_struct* current;        // 指向当前运行线程的 `task_struct`
@@ -30,6 +31,7 @@ void task_init() {
 
     // 4. 设置 idle 的 pid 为 0
     idle->pid = 0;
+    idle->thread.sp = (uint64)idle + PGSIZE;
 
     // 5. 将 current 和 task[0] 指向 idle
     current = idle;
@@ -46,15 +48,15 @@ void task_init() {
     }
 
     // 3. 为 task[1] ~ task[NR_TASKS - 1] 设置 `thread_struct` 中的 `ra` 和 `sp`, 
-
+    // 4. 其中 `ra` 设置为 __dummy （见 4.3.2）的地址， `sp` 设置为 该线程申请的物理页的高地址
     for (int i = 1; i < NR_TASKS; i++) {
         task[i]->thread.ra = (uint64)__dummy;
         task[i]->thread.sp = (uint64)task[i] + PGSIZE;
     }
 
-    // 4. 其中 `ra` 设置为 __dummy （见 4.3.2）的地址， `sp` 设置为 该线程申请的物理页的高地址
-
     printk("[INIT] ...proc_init done!\n");
+
+    set_priority();
 
     return;
 }
@@ -78,28 +80,67 @@ void dummy() {
     }
 }
 
-void switch_to(struct task_struct* next) {
-    //判断下一个执行的线程 next 与当前的线程 current 是否为同一个线程，如果是同一个线程，则无需做任何处理，
-    //否则调用 __switch_to 进行线程的上下文切换。
-    if (current->pid != next->pid) {
-        __switch_to(current, next);
-        current = next;
-    }
-    return;
-}
-
+// 更新当前线程的 counter，查看是否需要进行 schedule
 void do_timer(void) {
-    printk("I am at do_timer, current counter = %u\n", current->counter);
-    /* 1. 将当前进程的counter--，如果结果大于零则直接返回*/
-    if(current->counter-- > 0){
-        return;
+    // printk ("[DEBUG] [do_timer] I am at do_timer, current->counter = %lu\n", current->counter);
+    // 如果当前 counter 大于零，则减一
+    if (current->counter > 0) {
+        current->counter--;
+    }else{
+        // 如果当前 counter 小于等于零，则调用 schedule() 进行调度
+        schedule();
     }
-    /* 2. 否则进行进程调度 */
-    schedule();
+}
+
+// 选择优先级最高的线程进行调度
+void schedule(void) {
+    // 遍历 task 数组，找到从1到 NR_TASKS中，优先级最高（数字最小）且 counter 大于零的线程
+    uint64 min_priority = -1;
+    int min_priority_index = -1;
+    int all_zero = 1;
+    for (int i = 1; i < NR_TASKS; i++) { // 遍历 task 数组
+        if (task[i]->counter > 0 && task[i]->priority < min_priority) {
+            all_zero = 0;
+            min_priority = task[i]->priority;
+            min_priority_index = i;
+        }
+    }
+    // 如果所有线程的 counter 都为零，则将所有线程的 counter 重置为 priority
+    if (all_zero) {
+        for (int i = 1; i < NR_TASKS; i++) {
+            task[i]->counter = task[i]->priority;
+        }
+        // 找到优先级最高的线程，打印每个进程的 pid, priority, counter
+        for (int i = 1; i < NR_TASKS; i++) {
+            // SET [PID = 1, PRIORITY = 1, COUNTER = 1]
+            printk("[DEBUG] SET [PID = %lu, PRIORITY = %lu, COUNTER = %lu]\n", task[i]->pid, task[i]->priority, task[i]->counter);
+            if (task[i]->priority < min_priority) {
+                min_priority = task[i]->priority;
+                min_priority_index = i;
+            }
+        }
+    }else{
+    }
+    switch_to(task[min_priority_index]);
+}
+
+// 切换到 next 线程
+void switch_to(struct task_struct* next) {
+    printk("[DEBUG] switch to [PID = %lu, PRIORITY = %lu, COUNTER = %lu]\n", next->pid, next->priority, next->counter);
+    //判断下一个执行的线程 next 与当前的线程 current 是否为同一个线程，如果是同一个线程，则无需做任何处理，
+    //否则调用 __switch_to 进行线程上下文的切换。
+    if (current->pid != next->pid) {
+        //copy
+        struct task_struct* temp = current;
+        current = next;
+        __switch_to(temp, next);
+    }
     return;
 }
 
-void schedule(void) {
-    printk("[schedule] I am at schedule\n");
-    return;
+void set_priority() {
+    task[1]->priority = 1;
+    task[2]->priority = 4;
+    task[3]->priority = 5;
+    printk("[INIT] ...set_priority done!\n");
 }
