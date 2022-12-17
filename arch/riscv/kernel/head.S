@@ -7,8 +7,13 @@ _start:
   la sp,boot_stack_bottom # 将栈指针指向栈底
 
   # DEBUG:
-  rdtime a0
-  jal testLemon
+  # rdtime a0
+  # jal testLemon
+
+  # FIXME
+  # 执行 task_init
+  jal mm_init
+  jal task_init
 
   # set stvec = _traps, and set the mode to Direct
   la a0, _traps
